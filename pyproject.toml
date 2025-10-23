@@ -1,0 +1,13 @@
+[project]
+name = "bfe-emob"
+version = "0.1.0"
+description = "A scraper for the BFE e-mobility data"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "docopts>=0.6.1",
+    "gitpython>=3.1.45",
+    "jsonlines>=4.0.0",
+    "python-dotenv>=1.1.1",
+    "requests>=2.32.5",
+]
