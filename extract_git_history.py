@@ -56,4 +56,5 @@ with jsonlines.open(output_file, mode="w") as writer:
             start = True
         if start:
             versioned_json = json.loads(content)
+            versioned_json["_git_committed_datetime"] = git_commit_at.isoformat()
             writer.write(versioned_json)
