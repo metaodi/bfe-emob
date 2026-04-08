@@ -15,9 +15,9 @@ jobs:
       ISSUE_TITLE: "Scraper data is stale"
     steps:
       - name: Check out this repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
         with:
-          fetch-depth: 0 # need full history to inspect commit times
+          fetch-depth: 10 # need some history to inspect commit times
 
       - name: Check file freshness
         id: freshness
