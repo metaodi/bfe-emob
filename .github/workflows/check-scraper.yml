@@ -33,15 +33,13 @@ jobs:
           for FILE in "${FILES[@]}"; do
             LAST_COMMIT_DATE=$(git log -1 --format='%aI' -- "$FILE")
             if [ -z "$LAST_COMMIT_DATE" ]; then
-              STALE_FILES="${STALE_FILES}
-- \`$FILE\` (no commits found)"
+              STALE_FILES="${STALE_FILES} - \`$FILE\` (no commits found)"
               continue
             fi
             LAST_EPOCH=$(date -u -d "$LAST_COMMIT_DATE" '+%s')
             THRESHOLD_EPOCH=$(date -u -d "$TWO_HOURS_AGO" '+%s')
             if [ "$LAST_EPOCH" -lt "$THRESHOLD_EPOCH" ]; then
-              STALE_FILES="${STALE_FILES}
-- \`$FILE\` (last updated: $LAST_COMMIT_DATE)"
+              STALE_FILES="${STALE_FILES} - \`$FILE\` (last updated: $LAST_COMMIT_DATE)"
             fi
           done
 
