@@ -45,14 +45,49 @@ Note: neither the old files nor the new API provide historical data, only the cu
 ## Automation
 
 - **[`download.yml`](.github/workflows/download.yml)** runs every 8 minutes (and manually via `workflow_dispatch`), executes `download_data.py` and commits the files with the message `Latest data: <timestamp>` if anything changed. If one source fails, the other files are still committed and the run is marked as failed.
+- **[`build-parquet.yml`](.github/workflows/build-parquet.yml)** runs on the 2nd of every month, builds the Parquet files of the previous month (see [Time series](#time-series-parquet)) and commits them to `parquet/`. It can be started manually with a `month` input (`YYYY-MM`) to backfill earlier months.
 - **[`check-scraper.yml`](.github/workflows/check-scraper.yml)** runs every 6 hours and checks whether `data/ocpi/status.json` and the GeoJSON file were committed in the last 2 hours. If not, it opens (or comments on) an issue labelled `scraper-health`; once the data is fresh again, the issue is closed automatically.
+
+## Time series (Parquet)
+
+The git history contains a snapshot of the status every few minutes, from two sources with different formats (OICP until November 2026, OCPI afterwards). `build_parquet.py` combines them into one continuous time series of **status intervals** per EVSE and writes one Parquet file per month to `parquet/`. The raw data in git is not changed; the formats are only normalised when building the Parquet files.
+
+- `parquet/status_intervals_YYYY-MM.parquet` – one row per EVSE and period with unchanged status `[valid_from, valid_to)` (UTC, commit time of the snapshot). Intervals are cut at month boundaries, so every file is self-contained. Both sources are included (`source` = `oicp` / `ocpi`).
+- `parquet/snapshots_YYYY-MM.parquet` – one row per snapshot (`source`, `observed_at`, `commit`, `evse_count`), to check coverage and gaps.
+
+| Column | Description |
+|--------|-------------|
+| `source` | `oicp` or `ocpi` |
+| `evse_id` | EVSE ID, e.g. `CH*SUI*E…` – OICP `EvseID` and OCPI `evse_id` are identical for ~98 % of the EVSEs |
+| `operator_id` | e.g. `CH*SUI` |
+| `location_id`, `evse_uid` | OCPI only |
+| `status` | common vocabulary, see below |
+| `status_raw` | original status value of the source |
+| `valid_from`, `valid_to` | start (inclusive) and end (exclusive) of the interval |
+| `status_last_updated` | OCPI only: time of the status change reported by the operator |
+
+Status mapping:
+
+| `status` | OICP | OCPI |
+|----------|------|------|
+| `AVAILABLE` | `Available` | `AVAILABLE` |
+| `OCCUPIED` | `Occupied`, `Reserved` | `CHARGING`, `BLOCKED`, `RESERVED` |
+| `OUT_OF_SERVICE` | `OutOfService` | `OUTOFORDER`, `INOPERATIVE`, `PLANNED` |
+| `UNKNOWN` | `Unknown` | `UNKNOWN` |
+| `REMOVED` | `EvseNotFound` | `REMOVED` |
+
+Notes:
+- An EVSE missing from a snapshot ends its interval; it starts a new one when it reappears (gaps are visible in the data).
+- The last interval of a month ends at the month boundary if a later snapshot exists, otherwise at the last snapshot.
+- During the transition both sources overlap. Which source is used when is decided when reading (see the notebook), not when building.
+- The coverage changes at the switch: OCPI does not contain all operators yet (Nov 2026: 5003 instead of ~20'000 EVSEs).
 
 ## Setup
 
 The project uses Python 3.11 and [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv sync          # installs runtime and dev dependencies (jupyter, pandas)
+uv sync          # installs runtime and dev dependencies (jupyter, pandas, duckdb, matplotlib)
 ```
 
 ## Usage
@@ -74,7 +109,34 @@ uv run extract_git_history.py -i data/ocpi/status.json -o status_history.jsonl
 
 Note: this generates a large [JSON Lines](https://jsonlines.org/) file, where each line is one version of the file with an additional `_git_committed_datetime` field (JSON arrays such as `data/ocpi/*.json` are wrapped in a `data` field). `--start-at` is optional and skips all versions before the given commit.
 
-### Analyse the status history
+### Build the Parquet files
+
+The history of the month (plus a few days before it) must be available locally:
+
+```bash
+git fetch --shallow-since=2026-09-28 origin main     # or a full clone
+uv run build_parquet.py --month 2026-10 --ref origin/main
+uv run build_parquet.py --month 2026-10 --month 2026-11 --ref origin/main
+```
+
+Without `--month` the previous month is built. A month takes about 1–2 minutes (~1.2 million intervals, ~4 MB).
+
+### Analyse the time series
+
+The notebook [`analyse_timeseries.ipynb`](analyse_timeseries.ipynb) reads all Parquet files with [DuckDB](https://duckdb.org/) and combines the two sources to one series (OICP until a configurable `CUTOVER`, by default the last OICP snapshot; OCPI afterwards). It shows the coverage, the status distribution over time, occupancy by hour and weekday, statistics per operator, the duration of charging sessions, the history of a single EVSE and a comparison of OICP and OCPI during the overlap.
+
+```bash
+uv run jupyter notebook analyse_timeseries.ipynb
+# other directory: PARQUET_DIR=/path/to/parquet uv run jupyter notebook
+```
+
+Ad-hoc queries also work directly with DuckDB:
+
+```sql
+SELECT status, count(*) FROM 'parquet/status_intervals_*.parquet' GROUP BY ALL;
+```
+
+### Legacy notebook
 
 The notebook [`check_data.ipynb`](check_data.ipynb) walks through all versions of the (legacy OICP) status file, flattens them into records (`Timestamp`, `OperatorID`, `OperatorName`, `EvseID`, `EVSEStatus`), caches them as pickle files in `data_cache/` and combines them into one pandas DataFrame:
 
@@ -87,12 +149,16 @@ uv run jupyter notebook check_data.ipynb
 ```
 download_data.py          # downloads GeoJSON, OCPI API and legacy OICP data into data/
 extract_git_history.py    # exports all git versions of a file as JSON Lines
-check_data.ipynb          # analysis of the status history with pandas
+build_parquet.py          # builds the monthly Parquet time series from the git history
+analyse_timeseries.ipynb  # analysis of the Parquet files with DuckDB
+check_data.ipynb          # legacy: analysis of the OICP status history with pandas
 lib/download.py           # HTTP helpers (requests with retry/backoff)
 lib/ocpi.py               # OCPI API client (pagination, status snapshot)
+lib/timeseries.py         # reads both status sources from git and builds status intervals
 lib/git_history.py        # iterates over all versions of a file on branch main (GitPython)
 data/                     # scraped data (updated automatically)
 data/ocpi/                # data from the OCPI API
+parquet/                  # monthly Parquet files (built automatically)
 data_cache/               # local cache for the notebook (ignored by git)
 ```
 
