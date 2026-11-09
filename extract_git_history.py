@@ -39,5 +39,8 @@ with jsonlines.open(output_file, mode="w") as writer:
             start = True
         if start:
             versioned_json = json.loads(content)
+            if isinstance(versioned_json, list):
+                # e.g. data/ocpi/*.json are JSON arrays
+                versioned_json = {"data": versioned_json}
             versioned_json["_git_committed_datetime"] = git_commit_at.isoformat()
             writer.write(versioned_json)

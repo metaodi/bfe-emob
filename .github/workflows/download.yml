@@ -30,6 +30,8 @@ jobs:
       run: uv run download_data.py
     
     - name: Commit and push if it changed
+      # also commit partial results if one of the sources failed
+      if: ${{ !cancelled() }}
       run: |-
         git config user.name "Automated"
         git config user.email "actions@users.noreply.github.com"

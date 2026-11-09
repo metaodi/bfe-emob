@@ -23,7 +23,7 @@ jobs:
         id: freshness
         run: |
           FILES=(
-            "data/ch.bfe.ladestellen-elektromobilitaet-status.json"
+            "data/ocpi/status.json"
             "data/ch.bfe.ladestellen-elektromobilitaet_de.json"
           )
 
