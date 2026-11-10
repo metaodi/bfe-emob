@@ -10,8 +10,12 @@ on:
   schedule:
     - cron: '17 3 2 * *' # 03:17 UTC on the 2nd of every month (builds the previous month)
 
+# shared with download.yml: no data download runs while the Parquet files are
+# built (and vice versa). GitHub keeps only one pending run per group, so a
+# queued download is replaced by a newer one (harmless, it runs every 8 min).
 concurrency:
-  group: build-parquet
+  group: push-to-main
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -58,7 +62,7 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add parquet/
           git commit -m "Parquet: ${{ steps.month.outputs.month }}" || exit 0
-          # the download workflow pushes every few minutes, so rebase and retry
+          # downloads are blocked by the concurrency group, rebase/retry only as a safeguard
           for i in 1 2 3 4 5; do
             git pull --rebase origin ${{ github.ref_name }} && git push && exit 0
             sleep $((i * 10))

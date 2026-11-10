@@ -5,6 +5,12 @@ on:
   schedule:
   - cron: '*/8 * * * *' # runs every 8mins
 
+# shared with build-parquet.yml: never run while the Parquet files are built
+# (only one run of the group at a time, later runs wait)
+concurrency:
+  group: push-to-main
+  cancel-in-progress: false
+
 jobs:
   scheduled:
     runs-on: ubuntu-latest
