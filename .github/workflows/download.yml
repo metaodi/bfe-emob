@@ -44,5 +44,9 @@ jobs:
         git add -A
         timestamp=$(date -u)
         git commit -m "Latest data: ${timestamp}" || exit 0
-        git push
-
+        # downloads are blocked by the concurrency group, rebase/retry only as a safeguard
+        for i in 1 2 3 4 5; do
+          git pull --rebase origin ${{ github.ref_name }} && git push && exit 0
+          sleep $((i * 10))
+        done
+        exit 1
