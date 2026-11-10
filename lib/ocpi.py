@@ -21,8 +21,11 @@ STATUS_LIMIT = 5000  # max. for the status endpoint (no offset support)
 # its response) minus a small overlap for records that become visible late.
 # Duplicates are harmless: the newest value per EVSE wins.
 STATUS_OVERLAP = timedelta(minutes=2)
-# used if there is no previous run (no state file)
-STATUS_INITIAL_WINDOW = timedelta(minutes=30)
+# used if there is no previous run (no state file): start with this window
+# and halve it until the response is below the limit (otherwise it is an
+# undefined subset), but not below the minimum
+STATUS_INITIAL_WINDOW = timedelta(days=7)
+STATUS_MIN_WINDOW = timedelta(minutes=30)
 
 
 class OCPIError(Exception):
@@ -57,7 +60,20 @@ def fetch_all(http, module):
     return sorted(records, key=lambda o: (o["country_code"], o["party_id"], o["id"]))
 
 
-def fetch_status_since(http, date_from):
+def fetch_status_initial(http, now):
+    """Fetch as many recent status values as possible without hitting the limit."""
+    window = STATUS_INITIAL_WINDOW
+    while True:
+        date_from = now - window
+        records, server_ts = fetch_status_since(http, date_from, warn=False)
+        if len(records) < STATUS_LIMIT or window / 2 < STATUS_MIN_WINDOW:
+            if len(records) >= STATUS_LIMIT:
+                log.warning(f"Status endpoint returned {len(records)} records (= limit) for the initial window")
+            return records, server_ts, date_from
+        window = window / 2
+
+
+def fetch_status_since(http, date_from, warn=True):
     """Fetch the EVSE status values received since `date_from`.
 
     Returns (records, server timestamp of the response).
@@ -69,7 +85,7 @@ def fetch_status_since(http, date_from):
     _, body = _get(http, f"{BASE_URL}/status", params)
     records = body["data"] or []
     server_ts = _ts(body["timestamp"])
-    if len(records) >= STATUS_LIMIT:
+    if warn and len(records) >= STATUS_LIMIT:
         log.warning(
             f"Status endpoint returned {len(records)} records (= limit), "
             "some status changes might be missing."
@@ -158,10 +174,10 @@ def download_all(out_dir):
     state = load_json(state_path, {})
     if state.get("last_status_fetch") and os.path.exists(status_path):
         date_from = _ts(state["last_status_fetch"]) - STATUS_OVERLAP
+        updates, server_ts = fetch_status_since(http, date_from)
     else:
         log.info("No previous status fetch, starting with the initial window")
-        date_from = now - STATUS_INITIAL_WINDOW
-    updates, server_ts = fetch_status_since(http, date_from)
+        updates, server_ts, date_from = fetch_status_initial(http, now)
     log.info(f"Fetched {len(updates)} status updates since {date_from:%Y-%m-%dT%H:%M:%SZ}")
     snapshot = build_status_snapshot(locations, load_json(status_path, []), updates)
     log.info(f"Status snapshot contains {len(snapshot)} EVSEs")

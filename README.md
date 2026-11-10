@@ -24,7 +24,7 @@ How the status snapshot is built: the `/status` endpoint only returns status val
 2. the previous snapshot (`data/ocpi/status.json` in the repo),
 3. the status values received since the last successful run from `/status`.
 
-The time of the last successful run is stored in `data/ocpi/status_state.json` (server timestamp of the previous `/status` response). It is committed together with `status.json`, so if a run or its commit fails, the next run continues from the last committed state. The query starts 2 minutes earlier to catch records that become visible late; duplicates are harmless because the newest value per EVSE wins. Without a state file, the last 30 minutes are queried.
+The time of the last successful run is stored in `data/ocpi/status_state.json` (server timestamp of the previous `/status` response). It is committed together with `status.json`, so if a run or its commit fails, the next run continues from the last committed state. The query starts 2 minutes earlier to catch records that become visible late; duplicates are harmless because the newest value per EVSE wins. Without a state file (first run), the largest window below the 5000 record limit is queried (starting with 7 days, halved until the response is below the limit), so the first snapshot is as up to date as possible.
 
 EVSEs that are no longer part of any location are dropped from the snapshot.
 
