@@ -1,0 +1,66 @@
+name: Build monthly Parquet files
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Month to build (YYYY-MM), empty = previous month"
+        required: false
+        default: ""
+  schedule:
+    - cron: '17 3 2 * *' # 03:17 UTC on the 2nd of every month (builds the previous month)
+
+concurrency:
+  group: build-parquet
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Determine month
+        id: month
+        run: |
+          MONTH="${{ github.event.inputs.month }}"
+          if [ -z "$MONTH" ]; then
+            MONTH=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m)
+          fi
+          echo "month=$MONTH" >> "$GITHUB_OUTPUT"
+          # history of the month plus a few days before (state at the start of the month)
+          echo "since=$(date -u -d "$MONTH-01 -3 days" +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch git history of the month
+        run: git fetch --shallow-since=${{ steps.month.outputs.since }} origin ${{ github.ref_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install the dependencies
+        run: uv sync --locked
+
+      - name: Build Parquet files
+        run: uv run build_parquet.py --month ${{ steps.month.outputs.month }} --ref FETCH_HEAD
+
+      - name: Commit and push
+        run: |-
+          git config user.name "Automated"
+          git config user.email "actions@users.noreply.github.com"
+          git add parquet/
+          git commit -m "Parquet: ${{ steps.month.outputs.month }}" || exit 0
+          # the download workflow pushes every few minutes, so rebase and retry
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin ${{ github.ref_name }} && git push && exit 0
+            sleep $((i * 10))
+          done
+          exit 1

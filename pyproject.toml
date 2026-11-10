@@ -8,12 +8,15 @@ dependencies = [
     "docopts>=0.6.1",
     "gitpython>=3.1.45",
     "jsonlines>=4.0.0",
+    "pyarrow>=26.0.1",
     "python-dotenv>=1.1.1",
     "requests>=2.32.5",
 ]
 
 [dependency-groups]
 dev = [
+    "duckdb>=2.0.0",
     "jupyter>=1.1.1",
+    "matplotlib>=3.11.2",
     "pandas>=2.3.3",
 ]
