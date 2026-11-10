@@ -17,7 +17,12 @@ log = logging.getLogger(__name__)
 BASE_URL = "https://api.emobility-prod.prometheon.bfe.admin.ch/ocpi"
 PAGE_LIMIT = 1000  # max. for locations and tariffs
 STATUS_LIMIT = 5000  # max. for the status endpoint (no offset support)
-STATUS_WINDOW = timedelta(hours=2)
+# /status is queried from the time of the previous run (server timestamp of
+# its response) minus a small overlap for records that become visible late.
+# Duplicates are harmless: the newest value per EVSE wins.
+STATUS_OVERLAP = timedelta(minutes=2)
+# used if there is no previous run (no state file)
+STATUS_INITIAL_WINDOW = timedelta(minutes=30)
 
 
 class OCPIError(Exception):
@@ -53,19 +58,23 @@ def fetch_all(http, module):
 
 
 def fetch_status_since(http, date_from):
-    """Fetch the EVSE status values received since `date_from`."""
+    """Fetch the EVSE status values received since `date_from`.
+
+    Returns (records, server timestamp of the response).
+    """
     params = {
         "date_from": date_from.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "limit": STATUS_LIMIT,
     }
     _, body = _get(http, f"{BASE_URL}/status", params)
     records = body["data"] or []
+    server_ts = _ts(body["timestamp"])
     if len(records) >= STATUS_LIMIT:
         log.warning(
             f"Status endpoint returned {len(records)} records (= limit), "
             "some status changes might be missing."
         )
-    return records
+    return records, server_ts
 
 
 def _key(cc, party, location_id, evse_uid):
@@ -139,18 +148,28 @@ def write_json_array(path, records):
 def download_all(out_dir):
     http = dl.session()
     now = datetime.now(timezone.utc)
+    status_path = os.path.join(out_dir, "status.json")
+    state_path = os.path.join(out_dir, "status_state.json")
 
     locations = fetch_all(http, "locations")
     log.info(f"Fetched {len(locations)} locations")
     tariffs = fetch_all(http, "tariffs")
     log.info(f"Fetched {len(tariffs)} tariffs")
-    updates = fetch_status_since(http, now - STATUS_WINDOW)
-    log.info(f"Fetched {len(updates)} status updates")
-
-    status_path = os.path.join(out_dir, "status.json")
+    state = load_json(state_path, {})
+    if state.get("last_status_fetch") and os.path.exists(status_path):
+        date_from = _ts(state["last_status_fetch"]) - STATUS_OVERLAP
+    else:
+        log.info("No previous status fetch, starting with the initial window")
+        date_from = now - STATUS_INITIAL_WINDOW
+    updates, server_ts = fetch_status_since(http, date_from)
+    log.info(f"Fetched {len(updates)} status updates since {date_from:%Y-%m-%dT%H:%M:%SZ}")
     snapshot = build_status_snapshot(locations, load_json(status_path, []), updates)
     log.info(f"Status snapshot contains {len(snapshot)} EVSEs")
 
     write_json_array(os.path.join(out_dir, "locations.json"), locations)
     write_json_array(os.path.join(out_dir, "tariffs.json"), tariffs)
     write_json_array(status_path, snapshot)
+    # only store the new state once the snapshot is written
+    with open(state_path, "w", encoding="utf-8") as f:
+        json.dump({"last_status_fetch": server_ts.strftime("%Y-%m-%dT%H:%M:%S.%fZ")}, f)
+        f.write("\n")

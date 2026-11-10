@@ -21,7 +21,7 @@ There are no tests and no linter configured.
 ## Layout
 
 - `download_data.py` – docopt CLI. Downloads the GeoJSON (required), the legacy OICP files (failures only logged) and the OCPI data via `lib/ocpi.py`. Each source fails independently; the script exits 1 if a required source failed, and the workflow still commits partial results. URLs containing `status` get a `-status` suffix so the two OICP files don't collide.
-- `lib/ocpi.py` – OCPI client. `fetch_all()` follows the `Link: rel="next"` header and checks `X-Total-Count`; `build_status_snapshot()` merges, per EVSE of the current locations, the newest `last_updated` of (location EVSE status, previous `data/ocpi/status.json`, `/status?date_from=now-2h`). Output files are JSON arrays with one object per line, sorted by CPO identity.
+- `lib/ocpi.py` – OCPI client. `fetch_all()` follows the `Link: rel="next"` header and checks `X-Total-Count`; `build_status_snapshot()` merges, per EVSE of the current locations, the newest `last_updated` of (location EVSE status, previous `data/ocpi/status.json`, `/status` since the last successful run). The last run is the server `timestamp` of the previous `/status` response, stored in `data/ocpi/status_state.json` and committed with `status.json` (only written after the snapshot), queried with 2 min overlap; without state, the last 30 min. Output files are JSON arrays with one object per line, sorted by CPO identity.
 - `lib/download.py` – `requests` session with `Retry` (5 retries, backoff 2, retries also on 403/429/5xx) and a custom User-Agent.
 - `lib/git_history.py` – `iterate_file_versions(path)` yields `(index, committed_datetime, sha, bytes)` for every commit touching the file, oldest first. The ref is hard-coded to `main`; the `start_commit` parameter is unused.
 - `lib/timeseries.py` – reads every committed version of the OICP and OCPI status files (`git log` + one `git cat-file --batch` process), normalises the status (`STATUS_MAP`) and compresses the snapshots to intervals per EVSE (`build_intervals`). Intervals are cut at month boundaries; an EVSE missing from a snapshot closes its interval. Both sources are kept (`source` column); choosing between them during the overlap is done at read time.
@@ -36,6 +36,7 @@ There are no tests and no linter configured.
 
 - `ocpi/locations.json` – OCPI `Location` objects incl. `evses[].connectors[]`. Objects are identified by `country_code` + `party_id` + `id` (IDs alone are not unique).
 - `ocpi/tariffs.json` – OCPI `Tariff` objects; `connector.tariff_ids` refer to `Tariff.id` of the same `country_code` + `party_id`.
+- `ocpi/status_state.json` – `{"last_status_fetch": ...}`, state for the incremental `/status` query.
 - `ocpi/status.json` – status snapshot: `country_code`, `party_id`, `location_id`, `evse_uid`, `evse_id`, `status`, `last_updated`.
 - `ch.bfe.ladestellen-elektromobilitaet_de.json` (~27 MB) – GeoJSON (still provided after the switch) FeatureCollection, `id`/`location_id` = EVSE ID, `properties.Availability`, German HTML `description`.
 

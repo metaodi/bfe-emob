@@ -16,12 +16,15 @@ Source: `https://api.emobility-prod.prometheon.bfe.admin.ch/ocpi/` (public, no a
 |------|--------|---------|
 | `data/ocpi/locations.json` | `GET /locations` (all pages) | OCPI `Location` objects (charging sites) incl. their EVSEs and connectors |
 | `data/ocpi/tariffs.json` | `GET /tariffs` (all pages) | OCPI `Tariff` objects, referenced by `connector.tariff_ids` (same `country_code` + `party_id`) |
+| `data/ocpi/status_state.json` | – | Time of the last successful `/status` query (see below) |
 | `data/ocpi/status.json` | `GET /status` + locations | Snapshot of the current status of every EVSE: `country_code`, `party_id`, `location_id`, `evse_uid`, `evse_id`, `status` (`AVAILABLE`, `CHARGING`, `OUTOFORDER`, `INOPERATIVE`, `UNKNOWN`, `REMOVED`, …), `last_updated` |
 
 How the status snapshot is built: the `/status` endpoint only returns status values received since `date_from`, at most 5000 records and without `offset`, so a complete snapshot cannot be fetched in one request. The status contained in the locations is complete but not up to date. Therefore each run takes, per EVSE of the current locations, the newest value (by `last_updated`) of
 1. the status in the location object,
 2. the previous snapshot (`data/ocpi/status.json` in the repo),
-3. the status values received in the last 2 hours from `/status`.
+3. the status values received since the last successful run from `/status`.
+
+The time of the last successful run is stored in `data/ocpi/status_state.json` (server timestamp of the previous `/status` response). It is committed together with `status.json`, so if a run or its commit fails, the next run continues from the last committed state. The query starts 2 minutes earlier to catch records that become visible late; duplicates are harmless because the newest value per EVSE wins. Without a state file, the last 30 minutes are queried.
 
 EVSEs that are no longer part of any location are dropped from the snapshot.
 
