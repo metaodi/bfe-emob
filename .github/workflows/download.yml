@@ -5,6 +5,12 @@ on:
   schedule:
   - cron: '*/8 * * * *' # runs every 8mins
 
+# shared with build-parquet.yml: never run while the Parquet files are built
+# (only one run of the group at a time, later runs wait)
+concurrency:
+  group: push-to-main
+  cancel-in-progress: false
+
 jobs:
   scheduled:
     runs-on: ubuntu-latest
@@ -12,15 +18,15 @@ jobs:
       contents: write
     steps:
     - name: Check out this repo
-      uses: actions/checkout@v3
+      uses: actions/checkout@v7
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v7
       with:
         python-version-file: ".python-version"
     
     - name: Install uv
-      uses: astral-sh/setup-uv@v6
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
     - name: Install the dependencies
       run: |

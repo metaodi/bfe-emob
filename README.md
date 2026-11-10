@@ -48,7 +48,7 @@ Note: neither the old files nor the new API provide historical data, only the cu
 ## Automation
 
 - **[`download.yml`](.github/workflows/download.yml)** runs every 8 minutes (and manually via `workflow_dispatch`), executes `download_data.py` and commits the files with the message `Latest data: <timestamp>` if anything changed. If one source fails, the other files are still committed and the run is marked as failed.
-- **[`build-parquet.yml`](.github/workflows/build-parquet.yml)** runs on the 2nd of every month, builds the Parquet files of the previous month (see [Time series](#time-series-parquet)) and commits them to `parquet/`. It can be started manually with a `month` input (`YYYY-MM`) to backfill earlier months.
+- **[`build-parquet.yml`](.github/workflows/build-parquet.yml)** runs on the 2nd of every month, builds the Parquet files of the previous month (see [Time series](#time-series-parquet)) and commits them to `parquet/`. It can be started manually with a `month` input (`YYYY-MM`) to backfill earlier months. It shares a concurrency group with `download.yml`, so no data download runs while the Parquet files are built.
 - **[`check-scraper.yml`](.github/workflows/check-scraper.yml)** runs every 6 hours and checks whether `data/ocpi/status.json` and the GeoJSON file were committed in the last 2 hours. If not, it opens (or comments on) an issue labelled `scraper-health`; once the data is fresh again, the issue is closed automatically.
 
 ## Time series (Parquet)

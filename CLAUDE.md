@@ -29,7 +29,7 @@ There are no tests and no linter configured.
 - `analyse_timeseries.ipynb` – DuckDB views `intervals_raw`, `snapshots` and `intervals` (combined series, OICP before `CUTOVER`, OCPI after). Generated from code cells only; keep outputs cleared when committing.
 - `extract_git_history.py` – writes each file version as one JSON Lines record plus `_git_committed_datetime` (arrays are wrapped as `{"data": [...]}`).
 - `check_data.ipynb` – legacy, flattens the legacy OICP status file history into records and caches them as `data_cache/*.pks` pickles (git-ignored).
-- `.github/workflows/build-parquet.yml` – monthly (2nd, 03:17 UTC) or manual with `month` input: shallow-fetches the month's history, runs `build_parquet.py`, commits `parquet/` and pushes with `pull --rebase` retries (the download workflow pushes concurrently).
+- `.github/workflows/build-parquet.yml` – monthly (2nd, 03:17 UTC) or manual with `month` input: shallow-fetches the month's history, runs `build_parquet.py`, commits `parquet/` and pushes (with `pull --rebase` retries as a safeguard). Shares the concurrency group `push-to-main` with `download.yml`, so no download runs during the build (GitHub keeps only one pending run per group; a newer pending run replaces an older one).
 - `.github/workflows/check-scraper.yml` – every 6 h, opens/closes a `scraper-health` issue if `data/ocpi/status.json` or the GeoJSON file has not been committed for 2 h.
 
 ## Data files (`data/`)
