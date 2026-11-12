@@ -58,6 +58,12 @@ The git history contains a snapshot of the status every few minutes, from two so
 - `parquet/status_intervals_YYYY-MM.parquet` – one row per EVSE and period with unchanged status `[valid_from, valid_to)` (UTC, commit time of the snapshot). Intervals are cut at month boundaries, so every file is self-contained. Both sources are included (`source` = `oicp` / `ocpi`).
 - `parquet/snapshots_YYYY-MM.parquet` – one row per snapshot (`source`, `observed_at`, `commit`, `evse_count`), to check coverage and gaps.
 
+**Before the start of this repository (23 October 2025):** `parquet/*_2025-07.parquet` (28–30 July 2025) and the part of `parquet/*_2025-10.parquet` before 23 October 2025 (from 16 October) were built with `import_zip_snapshots.py` from the OICP snapshots archived as ZIP files in [ebp-group/225469-BFE-Ladeinfrastruktur-Data](https://github.com/ebp-group/225469-BFE-Ladeinfrastruktur-Data). For these snapshots, `commit` is `zip:<week folder>/<file>.zip` and `observed_at` is the download time from the ZIP's file name. That archive has gaps of weeks or months, so data from neighbouring snapshots is only carried across a month boundary if they are less than an hour apart. Don't rebuild these months with `build_parquet.py`, which would drop the ZIP data; rebuild them with:
+
+```bash
+uv run import_zip_snapshots.py --zip-dir ../225469-BFE-Ladeinfrastruktur-Data --month 2025-07 --month 2025-10 --ref main
+```
+
 | Column | Description |
 |--------|-------------|
 | `source` | `oicp` or `ocpi` |
@@ -153,6 +159,7 @@ uv run jupyter notebook check_data.ipynb
 download_data.py          # downloads GeoJSON, OCPI API and legacy OICP data into data/
 extract_git_history.py    # exports all git versions of a file as JSON Lines
 build_parquet.py          # builds the monthly Parquet time series from the git history
+import_zip_snapshots.py   # backfills Parquet months from an archive of ZIP snapshots (2025-07, 2025-10)
 analyse_timeseries.ipynb  # analysis of the Parquet files with DuckDB
 check_data.ipynb          # legacy: analysis of the OICP status history with pandas
 lib/download.py           # HTTP helpers (requests with retry/backoff)
