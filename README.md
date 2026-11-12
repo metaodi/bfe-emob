@@ -1,5 +1,7 @@
 # 225469-BFE-Ladeinfrastruktur-Data
 
+This repo is a fork of [metaodi/bfe-emob](https://github.com/metaodi/bfe-emob).
+
 A [git scraper](https://simonwillison.net/2020/Oct/9/git-scraping/) for the Swiss Federal Office of Energy (BFE / SFOE) e-mobility data: the locations and the real-time status of public charging stations for electric vehicles in Switzerland.
 
 A GitHub Actions workflow downloads the latest data every few minutes and commits it to this repository. The history of the data is therefore kept in the git history and can be extracted for analysis (e.g. how charging point availability changes over time).
