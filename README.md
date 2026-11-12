@@ -1,4 +1,4 @@
-# bfe-emob
+# 225469-BFE-Ladeinfrastruktur-Data
 
 A [git scraper](https://simonwillison.net/2020/Oct/9/git-scraping/) for the Swiss Federal Office of Energy (BFE / SFOE) e-mobility data: the locations and the real-time status of public charging stations for electric vehicles in Switzerland.
 
